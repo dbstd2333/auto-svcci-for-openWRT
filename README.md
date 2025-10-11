@@ -50,6 +50,6 @@ INFO: Still online, next check in 5 seconds
 /etc/init.d/auto-hhu start
 /etc/init.d/auto-hhu enable
 ````
-=
+--
 参考文献
 https://github.com/7Ji/auto-whu-openwrt
