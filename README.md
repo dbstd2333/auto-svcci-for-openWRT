@@ -1,5 +1,5 @@
 # Automatical WHU network authentication tool for OpenWrt
-=
+
 用于OpenWrt的河海校园网自动认证工具，无需Python等环境要素，理论上可以适用于其他使用锐捷ePortal方式认证的校园网络环境 仅支持OpenWrt
 --
 # 如何使用？
@@ -16,7 +16,7 @@ opkg install grep curl
 
 3、下载Release内的autohhu.tar.gz文件，上传到/tmp目录，或直接在路由器上使用以下命令下载到/tmp目录下：
 ````
-wget https://github.com/7Ji/auto-whu/releases/download/v0.1/auto-whu.tar.gz -O /tmp/auto-whu.tar.gz
+wget https://github.com/CodeFromInterest/auto-hhu-for-openWRT/releases/download/v1.0/auto-hhu.tar.gz -O /tmp/auto-hhu.tar.gz
 ````
 4、运行以下命令解压：
 ````
@@ -50,3 +50,6 @@ INFO: Still online, next check in 5 seconds
 /etc/init.d/auto-hhu start
 /etc/init.d/auto-hhu enable
 ````
+=
+参考文献
+https://github.com/7Ji/auto-whu-openwrt
