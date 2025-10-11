@@ -1,0 +1,2 @@
+# auto-hhu-for-openWRT
+用于OpenWrt的河海校园网自动认证工具，无需Python等环境要素，理论上可以适用于其他使用锐捷ePortal方式认证的校园网络环境 仅支持OpenWrt
