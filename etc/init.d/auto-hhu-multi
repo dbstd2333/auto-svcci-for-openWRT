@@ -1,0 +1,216 @@
+#!/bin/sh /etc/rc.common
+# 校园网多播认证服务管理脚本
+# 支持同时管理多个认证实例
+
+START=99
+STOP=10
+
+# 配置参数
+SCRIPT_PATH="/usr/sbin/auto-hhu-multi.sh"
+INTERFACES="wan wan2 wan3"  # 需要认证的接口列表
+CHECK_INTERVAL=30  # 健康检查间隔（秒）
+
+# 服务状态检查
+check_service() {
+    local interface="$1"
+    local pid_file="/var/run/auto-hhu-${interface}.pid"
+    
+    if [ -f "$pid_file" ]; then
+        local pid=$(cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null; then
+            return 0  # 服务正在运行
+        fi
+    fi
+    return 1  # 服务未运行
+}
+
+# 启动单个实例
+start_instance() {
+    local interface="$1"
+    local conf_file="/etc/auto-hhu-${interface}.conf"
+    
+    if [ ! -f "$conf_file" ]; then
+        echo "Warning: Configuration file $conf_file not found, skipping $interface"
+        return 1
+    fi
+    
+    if check_service "$interface"; then
+        echo "auto-hhu for $interface is already running"
+        return 0
+    fi
+    
+    echo "Starting auto-hhu for $interface..."
+    "$SCRIPT_PATH" "$interface" "$conf_file" &
+    
+    # 等待服务启动
+    sleep 2
+    if check_service "$interface"; then
+        echo "auto-hhu for $interface started successfully"
+        return 0
+    else
+        echo "Failed to start auto-hhu for $interface"
+        return 1
+    fi
+}
+
+# 停止单个实例
+stop_instance() {
+    local interface="$1"
+    local pid_file="/var/run/auto-hhu-${interface}.pid"
+    
+    if [ ! -f "$pid_file" ]; then
+        echo "auto-hhu for $interface is not running (no PID file)"
+        return 1
+    fi
+    
+    local pid=$(cat "$pid_file")
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "Stopping auto-hhu for $interface (PID: $pid)..."
+        kill "$pid"
+        
+        # 等待进程结束
+        local count=0
+        while kill -0 "$pid" 2>/dev/null && [ $count -lt 10 ]; do
+            sleep 1
+            count=$((count + 1))
+        done
+        
+        # 如果进程还在，强制结束
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "Force stopping auto-hhu for $interface..."
+            kill -9 "$pid"
+        fi
+        
+        rm -f "$pid_file"
+        echo "auto-hhu for $interface stopped"
+        return 0
+    else
+        echo "auto-hhu for $interface is not running"
+        rm -f "$pid_file"
+        return 1
+    fi
+}
+
+# 显示状态
+show_status() {
+    local interface="$1"
+    local pid_file="/var/run/auto-hhu-${interface}.pid"
+    local log_file="/tmp/auto-hhu-${interface}.log"
+    
+    if check_service "$interface"; then
+        local pid=$(cat "$pid_file")
+        echo "auto-hhu for $interface: RUNNING (PID: $pid)"
+        
+        # 显示最近日志
+        if [ -f "$log_file" ]; then
+            echo "Recent logs:"
+            tail -n 3 "$log_file"
+        fi
+    else
+        echo "auto-hhu for $interface: STOPPED"
+    fi
+}
+
+# 启动所有实例
+start() {
+    echo "Starting auto-hhu multi-instance service..."
+    local started=0
+    
+    for interface in $INTERFACES; do
+        if start_instance "$interface"; then
+            started=$((started + 1))
+        fi
+    done
+    
+    echo "Started $started instance(s) successfully"
+    
+    # 启动健康检查守护进程
+    if [ $started -gt 0 ]; then
+        {
+            while true; do
+                sleep "$CHECK_INTERVAL"
+                for interface in $INTERFACES; do
+                    if ! check_service "$interface"; then
+                        echo "Health check: restarting failed instance $interface"
+                        start_instance "$interface"
+                    fi
+                done
+            done
+        } &
+        echo $! > /var/run/auto-hhu-healthcheck.pid
+    fi
+}
+
+# 停止所有实例
+stop() {
+    echo "Stopping auto-hhu multi-instance service..."
+    local stopped=0
+    
+    # 停止健康检查守护进程
+    if [ -f /var/run/auto-hhu-healthcheck.pid ]; then
+        local health_pid=$(cat /var/run/auto-hhu-healthcheck.pid)
+        if kill -0 "$health_pid" 2>/dev/null; then
+            kill "$health_pid"
+        fi
+        rm -f /var/run/auto-hhu-healthcheck.pid
+    fi
+    
+    # 停止所有认证实例
+    for interface in $INTERFACES; do
+        if stop_instance "$interface"; then
+            stopped=$((stopped + 1))
+        fi
+    done
+    
+    echo "Stopped $stopped instance(s)"
+}
+
+# 重启所有实例
+restart() {
+    stop
+    sleep 2
+    start
+}
+
+# 显示状态
+status() {
+    echo "auto-hhu multi-instance service status:"
+    echo "========================================="
+    
+    local running=0
+    for interface in $INTERFACES; do
+        show_status "$interface"
+        echo ""
+        if check_service "$interface"; then
+            running=$((running + 1))
+        fi
+    done
+    
+    echo "========================================="
+    echo "Total: $running/$(echo $INTERFACES | wc -w) instances running"
+}
+
+# 根据参数执行相应操作
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        echo ""
+        echo "This script manages multiple auto-hhu instances for different interfaces."
+        echo "Configure interfaces in INTERFACES variable at the top of this script."
+        exit 1
+        ;;
+esac
+
+exit 0
